@@ -155,7 +155,7 @@ function SummaryCard({ label, value, Icon, detail, featured }) {
   );
 }
 
-function AccountCard({ account, onAction }) {
+function AccountCard({ account, onAction, onDelete }) {
   const definition = ACCOUNT_TYPES.find(
     (item) => item.value === account.type
   );
@@ -169,6 +169,7 @@ function AccountCard({ account, onAction }) {
         <div className="account-icon">
           <Icon size={21} />
         </div>
+
         <span className="account-type">
           {isCredit ? "CREDIT CARD" : account.type.toUpperCase()}
         </span>
@@ -240,6 +241,31 @@ function AccountCard({ account, onAction }) {
           </>
         )}
       </div>
+
+      <button
+        type="button"
+        onClick={() => onDelete(account)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          width: "100%",
+          minHeight: 44,
+          marginTop: 14,
+          padding: "10px 12px",
+          border: "1px solid #553039",
+          borderRadius: 10,
+          background: "rgba(180, 55, 70, 0.08)",
+          color: "#ed929d",
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: "pointer",
+        }}
+      >
+        <Trash2 size={15} />
+        Delete account
+      </button>
     </article>
   );
 }
@@ -272,6 +298,14 @@ export default function App() {
 
   const [editingId, setEditingId] = useState(null);
   const [deletingTransaction, setDeletingTransaction] =
+    useState(null);
+
+  // Account deletion state
+  const [deletingAccount, setDeletingAccount] = useState(null);
+  const [accountDeleteError, setAccountDeleteError] = useState("");
+  const [accountDeleteChecking, setAccountDeleteChecking] =
+    useState(false);
+  const [accountTransactionCount, setAccountTransactionCount] =
     useState(null);
 
   const [saving, setSaving] = useState(false);
@@ -417,9 +451,7 @@ export default function App() {
         const { error } =
           await supabase.auth.resetPasswordForEmail(
             cleanEmail,
-            {
-              redirectTo: window.location.origin,
-            }
+            { redirectTo: window.location.origin }
           );
 
         if (error) throw error;
@@ -509,7 +541,6 @@ export default function App() {
   );
 
   const netWorth = totalCash - totalDebt;
-
   const availableCredit = totalCreditLimit - totalDebt;
 
   const creditUtilization =
@@ -531,7 +562,6 @@ export default function App() {
 
   async function createAccount(event) {
     event.preventDefault();
-
     if (saving) return;
 
     if (!accountForm.name.trim()) {
@@ -539,22 +569,14 @@ export default function App() {
       return;
     }
 
-    if (
-      !isValidAmount(
-        accountForm.opening_balance || "0",
-        true
-      )
-    ) {
+    if (!isValidAmount(accountForm.opening_balance || "0", true)) {
       setFormError("Enter a valid opening balance.");
       return;
     }
 
     if (
       accountForm.type === "credit" &&
-      !isValidAmount(
-        accountForm.credit_limit || "0",
-        true
-      )
+      !isValidAmount(accountForm.credit_limit || "0", true)
     ) {
       setFormError("Enter a valid credit limit.");
       return;
@@ -568,9 +590,7 @@ export default function App() {
       .insert({
         name: accountForm.name.trim(),
         type: accountForm.type,
-        opening_balance: Number(
-          accountForm.opening_balance || 0
-        ),
+        opening_balance: Number(accountForm.opening_balance || 0),
         credit_limit:
           accountForm.type === "credit"
             ? Number(accountForm.credit_limit || 0)
@@ -585,8 +605,116 @@ export default function App() {
       if (refreshed) {
         setAccountModalOpen(false);
       } else {
-        setFormError(
-          "Account saved, but refreshing failed."
+        setFormError("Account saved, but refreshing failed.");
+      }
+    }
+
+    setSaving(false);
+  }
+
+  // ACCOUNT DELETION
+
+  async function openDeleteAccount(account) {
+    setDeletingAccount(account);
+    setAccountDeleteError("");
+    setAccountTransactionCount(null);
+    setAccountDeleteChecking(true);
+
+    // Check both sides of transactions, including transfers
+    // and credit-card payments.
+    const { count: fromCount, error: fromError } =
+      await supabase
+        .from("transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("from_account_id", account.id);
+
+    const { count: toCount, error: toError } =
+      await supabase
+        .from("transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("to_account_id", account.id);
+
+    if (fromError || toError) {
+      setAccountDeleteError(
+        fromError?.message ||
+          toError?.message ||
+          "Could not check account history."
+      );
+    } else {
+      setAccountTransactionCount(
+        Number(fromCount || 0) + Number(toCount || 0)
+      );
+    }
+
+    setAccountDeleteChecking(false);
+  }
+
+  async function confirmDeleteAccount() {
+    if (
+      !deletingAccount ||
+      saving ||
+      accountDeleteChecking ||
+      accountTransactionCount !== 0
+    ) {
+      return;
+    }
+
+    setSaving(true);
+    setAccountDeleteError("");
+
+    const accountId = deletingAccount.id;
+
+    // Recheck transaction references immediately before deletion.
+    // This is an application-level safeguard; a database
+    // foreign-key RESTRICT constraint should also protect history.
+    const { count, error: checkError } = await supabase
+      .from("transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .or(
+        `from_account_id.eq.${accountId},to_account_id.eq.${accountId}`
+      );
+
+    if (checkError) {
+      setAccountDeleteError(checkError.message);
+      setSaving(false);
+      return;
+    }
+
+    if (count !== 0) {
+      setAccountTransactionCount(count);
+      setAccountDeleteError(
+        "This account now has transaction history and cannot be deleted."
+      );
+      setSaving(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("accounts")
+      .delete()
+      .eq("id", accountId)
+      .eq("user_id", userId)
+      .select("id");
+
+    if (error) {
+      setAccountDeleteError(error.message);
+    } else if (!data?.length) {
+      setAccountDeleteError(
+        "Account was not deleted. Check your Supabase permissions."
+      );
+    } else {
+      const refreshed = await refreshData();
+
+      if (refreshed) {
+        setDeletingAccount(null);
+        setAccountTransactionCount(null);
+        setAccountDeleteError("");
+      } else {
+        setAccountDeleteError(
+          "Account deleted, but refreshing failed. Refresh before retrying."
         );
       }
     }
@@ -594,20 +722,13 @@ export default function App() {
     setSaving(false);
   }
 
-  function openTransactionModal(
-    type = "expense",
-    accountId = ""
-  ) {
+  function openTransactionModal(type = "expense", accountId = "") {
     const form = blankTransaction();
 
     form.type = type;
-    form.category =
-      type === "income" ? "Income" : "Other";
+    form.category = type === "income" ? "Income" : "Other";
 
-    if (
-      type === "income" ||
-      type === "card_payment"
-    ) {
+    if (type === "income" || type === "card_payment") {
       form.to_account_id = accountId;
     } else {
       form.from_account_id = accountId;
@@ -623,15 +744,12 @@ export default function App() {
     setTransactionForm({
       type: transaction.type,
       amount: String(transaction.amount),
-      from_account_id:
-        transaction.from_account_id || "",
-      to_account_id:
-        transaction.to_account_id || "",
+      from_account_id: transaction.from_account_id || "",
+      to_account_id: transaction.to_account_id || "",
       category: transaction.category || "Other",
       merchant: transaction.merchant || "",
       note: transaction.note || "",
-      transaction_date:
-        transaction.transaction_date || today(),
+      transaction_date: transaction.transaction_date || today(),
     });
 
     setEditingId(transaction.id);
@@ -652,8 +770,7 @@ export default function App() {
       type,
       from_account_id: "",
       to_account_id: "",
-      category:
-        type === "income" ? "Income" : "Other",
+      category: type === "income" ? "Income" : "Other",
     }));
 
     setFormError("");
@@ -689,10 +806,7 @@ export default function App() {
         return "Choose two different accounts.";
       }
 
-      if (
-        from.type === "credit" ||
-        to.type === "credit"
-      ) {
+      if (from.type === "credit" || to.type === "credit") {
         return "Transfers must use non-credit accounts.";
       }
     } else if (form.type === "card_payment") {
@@ -780,7 +894,6 @@ export default function App() {
 
   async function saveTransaction(event) {
     event.preventDefault();
-
     if (saving) return;
 
     const validationError =
@@ -794,21 +907,16 @@ export default function App() {
     const payload = {
       type: transactionForm.type,
       amount: Number(transactionForm.amount),
-      from_account_id:
-        transactionForm.from_account_id || null,
-      to_account_id:
-        transactionForm.to_account_id || null,
+      from_account_id: transactionForm.from_account_id || null,
+      to_account_id: transactionForm.to_account_id || null,
       category: ["transfer", "card_payment"].includes(
         transactionForm.type
       )
         ? null
         : transactionForm.category,
-      merchant:
-        transactionForm.merchant.trim() || null,
-      note:
-        transactionForm.note.trim() || null,
-      transaction_date:
-        transactionForm.transaction_date,
+      merchant: transactionForm.merchant.trim() || null,
+      note: transactionForm.note.trim() || null,
+      transaction_date: transactionForm.transaction_date,
     };
 
     setSaving(true);
@@ -831,9 +939,7 @@ export default function App() {
     if (error) {
       setFormError(error.message);
     } else if (!data?.length) {
-      setFormError(
-        "No transaction was saved. Please refresh."
-      );
+      setFormError("No transaction was saved. Please refresh.");
     } else {
       const refreshed = await refreshData();
 
@@ -866,9 +972,7 @@ export default function App() {
     if (error) {
       setFormError(error.message);
     } else if (!data?.length) {
-      setFormError(
-        "Transaction not deleted. Please refresh."
-      );
+      setFormError("Transaction not deleted. Please refresh.");
     } else {
       const refreshed = await refreshData();
 
@@ -893,23 +997,16 @@ export default function App() {
   };
 
   const pageDescriptions = {
-    dashboard:
-      "A clear picture of where your money stands.",
-    accounts:
-      "Every account, all in one place.",
-    transactions:
-      "Every dollar moving in and out.",
-    budgets:
-      "Spend intentionally and build real savings.",
+    dashboard: "A clear picture of where your money stands.",
+    accounts: "Every account, all in one place.",
+    transactions: "Every dollar moving in and out.",
+    budgets: "Spend intentionally and build real savings.",
   };
 
   if (initializing) {
     return (
       <div className="loading-screen">
-        <LoaderCircle
-          className="spin"
-          size={28}
-        />
+        <LoaderCircle className="spin" size={28} />
       </div>
     );
   }
@@ -994,11 +1091,7 @@ export default function App() {
                     <LockKeyhole size={18} />
 
                     <input
-                      type={
-                        showPassword
-                          ? "text"
-                          : "password"
-                      }
+                      type={showPassword ? "text" : "password"}
                       placeholder="Enter your password"
                       value={password}
                       onChange={(event) =>
@@ -1042,10 +1135,7 @@ export default function App() {
                 disabled={authLoading}
               >
                 {authLoading ? (
-                  <LoaderCircle
-                    className="spin"
-                    size={19}
-                  />
+                  <LoaderCircle className="spin" size={19} />
                 ) : (
                   <>
                     {authMode === "login"
@@ -1068,9 +1158,7 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   setAuthMode(
-                    authMode === "login"
-                      ? "signup"
-                      : "login"
+                    authMode === "login" ? "signup" : "login"
                   );
                   setAuthMessage(null);
                   setPassword("");
@@ -1134,9 +1222,7 @@ export default function App() {
             <ShieldCheck size={18} />
             <div>
               <strong>Private workspace</strong>
-              <span>
-                Your financial data is yours.
-              </span>
+              <span>Your financial data is yours.</span>
             </div>
           </div>
         </div>
@@ -1144,8 +1230,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <div className="profile">
             <div className="avatar">
-              {session.user.email?.[0]?.toUpperCase() ||
-                "U"}
+              {session.user.email?.[0]?.toUpperCase() || "U"}
             </div>
 
             <div className="profile-info">
@@ -1187,9 +1272,7 @@ export default function App() {
             <button
               type="button"
               className="primary-button"
-              onClick={() =>
-                openTransactionModal()
-              }
+              onClick={() => openTransactionModal()}
               aria-label="Add transaction"
             >
               <Plus size={17} />
@@ -1220,24 +1303,17 @@ export default function App() {
             >
               <RefreshCw
                 size={17}
-                className={
-                  dataLoading ? "spin" : ""
-                }
+                className={dataLoading ? "spin" : ""}
               />
               <span>Refresh</span>
             </button>
           </div>
 
-          {dataError && (
-            <Notice>{dataError}</Notice>
-          )}
+          {dataError && <Notice>{dataError}</Notice>}
 
           {dataLoading ? (
             <div className="data-loading">
-              <LoaderCircle
-                className="spin"
-                size={25}
-              />
+              <LoaderCircle className="spin" size={25} />
               Loading your finances...
             </div>
           ) : (
@@ -1274,17 +1350,14 @@ export default function App() {
                       <div>
                         <h2>Your accounts</h2>
                         <p>
-                          Live balances calculated
-                          from Supabase.
+                          Live balances calculated from Supabase.
                         </p>
                       </div>
 
                       <button
                         type="button"
                         className="section-link"
-                        onClick={() =>
-                          setPage("accounts")
-                        }
+                        onClick={() => setPage("accounts")}
                       >
                         View all
                         <ArrowRight size={16} />
@@ -1298,14 +1371,8 @@ export default function App() {
                         <Wallet size={27} />
                       </div>
 
-                      <h2>
-                        Start with your first account.
-                      </h2>
-
-                      <p>
-                        Add checking, savings,
-                        cash, or credit.
-                      </p>
+                      <h2>Start with your first account.</h2>
+                      <p>Add checking, savings, cash, or credit.</p>
 
                       <button
                         className="primary-button"
@@ -1322,9 +1389,8 @@ export default function App() {
                           <AccountCard
                             key={account.id}
                             account={account}
-                            onAction={
-                              openTransactionModal
-                            }
+                            onAction={openTransactionModal}
+                            onDelete={openDeleteAccount}
                           />
                         ))}
 
@@ -1337,13 +1403,9 @@ export default function App() {
                             <Plus size={22} />
                           </div>
 
-                          <strong>
-                            Add another account
-                          </strong>
-
+                          <strong>Add another account</strong>
                           <span>
-                            Checking, savings,
-                            cash, or credit
+                            Checking, savings, cash, or credit
                           </span>
                         </button>
                       </div>
@@ -1356,13 +1418,10 @@ export default function App() {
                                 CREDIT OVERVIEW
                               </div>
 
-                              <h2>
-                                Credit utilization
-                              </h2>
-
+                              <h2>Credit utilization</h2>
                               <p>
-                                How much of your credit
-                                limit you're using.
+                                How much of your credit limit
+                                you're using.
                               </p>
                             </div>
 
@@ -1377,10 +1436,7 @@ export default function App() {
                               style={{
                                 width: `${Math.max(
                                   0,
-                                  Math.min(
-                                    creditUtilization,
-                                    100
-                                  )
+                                  Math.min(creditUtilization, 100)
                                 )}%`,
                               }}
                             />
@@ -1388,18 +1444,14 @@ export default function App() {
 
                           <div className="credit-stats">
                             <div>
-                              <span>
-                                Total credit limit
-                              </span>
+                              <span>Total credit limit</span>
                               <strong>
                                 {money(totalCreditLimit)}
                               </strong>
                             </div>
 
                             <div>
-                              <span>
-                                Remaining credit
-                              </span>
+                              <span>Remaining credit</span>
                               <strong>
                                 {money(availableCredit)}
                               </strong>
@@ -1428,9 +1480,7 @@ export default function App() {
                       <button
                         type="button"
                         className="section-link"
-                        onClick={() =>
-                          setPage("transactions")
-                        }
+                        onClick={() => setPage("transactions")}
                       >
                         View all
                         <ArrowRight size={16} />
@@ -1444,19 +1494,14 @@ export default function App() {
                         <ReceiptText size={26} />
                       </div>
 
-                      <h2>
-                        No transactions yet.
-                      </h2>
-
+                      <h2>No transactions yet.</h2>
                       <p>
                         Record your first money movement.
                       </p>
 
                       <button
                         className="primary-button"
-                        onClick={() =>
-                          openTransactionModal()
-                        }
+                        onClick={() => openTransactionModal()}
                       >
                         <Plus size={18} />
                         Add transaction
@@ -1475,8 +1520,7 @@ export default function App() {
                           transaction.type === "transfer";
 
                         const payment =
-                          transaction.type ===
-                          "card_payment";
+                          transaction.type === "card_payment";
 
                         const Icon = income
                           ? ArrowDownLeft
@@ -1516,9 +1560,7 @@ export default function App() {
                           >
                             <div
                               className={`transaction-icon ${
-                                income
-                                  ? "incoming"
-                                  : ""
+                                income ? "incoming" : ""
                               }`}
                             >
                               <Icon size={20} />
@@ -1539,9 +1581,7 @@ export default function App() {
 
                             <div
                               className={`transaction-amount ${
-                                income
-                                  ? "positive"
-                                  : ""
+                                income ? "positive" : ""
                               }`}
                             >
                               {income
@@ -1559,9 +1599,7 @@ export default function App() {
                                 title="Edit transaction"
                                 aria-label={`Edit ${title}`}
                                 onClick={() =>
-                                  editTransaction(
-                                    transaction
-                                  )
+                                  editTransaction(transaction)
                                 }
                               >
                                 <Pencil size={15} />
@@ -1612,25 +1650,19 @@ export default function App() {
           >
             <div className="modal-header">
               <div>
-                <div className="eyebrow">
-                  NEW ACCOUNT
-                </div>
+                <div className="eyebrow">NEW ACCOUNT</div>
 
                 <h2 id="account-modal-title">
                   Add an account
                 </h2>
 
-                <p>
-                  Tell us where your money is held.
-                </p>
+                <p>Tell us where your money is held.</p>
               </div>
 
               <button
                 type="button"
                 className="close-button"
-                onClick={() =>
-                  setAccountModalOpen(false)
-                }
+                onClick={() => setAccountModalOpen(false)}
                 disabled={saving}
                 aria-label="Close"
               >
@@ -1698,14 +1730,11 @@ export default function App() {
                   min="0"
                   step="0.01"
                   placeholder="0.00"
-                  value={
-                    accountForm.opening_balance
-                  }
+                  value={accountForm.opening_balance}
                   onChange={(event) =>
                     setAccountForm((form) => ({
                       ...form,
-                      opening_balance:
-                        event.target.value,
+                      opening_balance: event.target.value,
                     }))
                   }
                 />
@@ -1719,20 +1748,16 @@ export default function App() {
 
                   <div className="money-input">
                     <span>$</span>
-
                     <input
                       type="number"
                       min="0"
                       step="0.01"
                       placeholder="5000.00"
-                      value={
-                        accountForm.credit_limit
-                      }
+                      value={accountForm.credit_limit}
                       onChange={(event) =>
                         setAccountForm((form) => ({
                           ...form,
-                          credit_limit:
-                            event.target.value,
+                          credit_limit: event.target.value,
                         }))
                       }
                     />
@@ -1740,17 +1765,13 @@ export default function App() {
                 </>
               )}
 
-              {formError && (
-                <Notice>{formError}</Notice>
-              )}
+              {formError && <Notice>{formError}</Notice>}
 
               <div className="modal-actions">
                 <button
                   type="button"
                   className="secondary-button"
-                  onClick={() =>
-                    setAccountModalOpen(false)
-                  }
+                  onClick={() => setAccountModalOpen(false)}
                   disabled={saving}
                 >
                   Cancel
@@ -1762,10 +1783,7 @@ export default function App() {
                   disabled={saving}
                 >
                   {saving ? (
-                    <LoaderCircle
-                      className="spin"
-                      size={18}
-                    />
+                    <LoaderCircle className="spin" size={18} />
                   ) : (
                     <>
                       <Plus size={18} />
@@ -1811,9 +1829,7 @@ export default function App() {
               <button
                 type="button"
                 className="close-button"
-                onClick={() =>
-                  setTransactionModalOpen(false)
-                }
+                onClick={() => setTransactionModalOpen(false)}
                 disabled={saving}
                 aria-label="Close"
               >
@@ -1854,7 +1870,6 @@ export default function App() {
 
               <div className="money-input">
                 <span>$</span>
-
                 <input
                   type="number"
                   min="0.01"
@@ -1881,9 +1896,7 @@ export default function App() {
 
                   <select
                     className="form-input"
-                    value={
-                      transactionForm.from_account_id
-                    }
+                    value={transactionForm.from_account_id}
                     onChange={(event) =>
                       updateTransaction(
                         "from_account_id",
@@ -1899,8 +1912,7 @@ export default function App() {
                     {accounts
                       .filter(
                         (account) =>
-                          transactionForm.type ===
-                            "expense" ||
+                          transactionForm.type === "expense" ||
                           account.type !== "credit"
                       )
                       .map((account) => (
@@ -1922,17 +1934,14 @@ export default function App() {
                   <label className="field-label">
                     {transactionForm.type === "income"
                       ? "Deposit into"
-                      : transactionForm.type ===
-                        "card_payment"
+                      : transactionForm.type === "card_payment"
                       ? "Credit card to pay"
                       : "To account"}
                   </label>
 
                   <select
                     className="form-input"
-                    value={
-                      transactionForm.to_account_id
-                    }
+                    value={transactionForm.to_account_id}
                     onChange={(event) =>
                       updateTransaction(
                         "to_account_id",
@@ -1947,8 +1956,7 @@ export default function App() {
 
                     {accounts
                       .filter((account) =>
-                        transactionForm.type ===
-                        "card_payment"
+                        transactionForm.type === "card_payment"
                           ? account.type === "credit"
                           : account.type !== "credit"
                       )
@@ -1975,12 +1983,10 @@ export default function App() {
                 </div>
               )}
 
-              {transactionForm.type ===
-                "card_payment" && (
+              {transactionForm.type === "card_payment" && (
                 <div className="helper-note">
-                  Card payments reduce cash and card
-                  debt. They aren't counted as new
-                  spending.
+                  Card payments reduce cash and card debt.
+                  They aren't counted as new spending.
                 </div>
               )}
 
@@ -1994,9 +2000,7 @@ export default function App() {
 
                   <select
                     className="form-input"
-                    value={
-                      transactionForm.category
-                    }
+                    value={transactionForm.category}
                     onChange={(event) =>
                       updateTransaction(
                         "category",
@@ -2055,9 +2059,7 @@ export default function App() {
               <input
                 className="form-input"
                 type="date"
-                value={
-                  transactionForm.transaction_date
-                }
+                value={transactionForm.transaction_date}
                 onChange={(event) =>
                   updateTransaction(
                     "transaction_date",
@@ -2067,17 +2069,13 @@ export default function App() {
                 required
               />
 
-              {formError && (
-                <Notice>{formError}</Notice>
-              )}
+              {formError && <Notice>{formError}</Notice>}
 
               <div className="modal-actions">
                 <button
                   type="button"
                   className="secondary-button"
-                  onClick={() =>
-                    setTransactionModalOpen(false)
-                  }
+                  onClick={() => setTransactionModalOpen(false)}
                   disabled={saving}
                 >
                   Cancel
@@ -2089,10 +2087,7 @@ export default function App() {
                   disabled={saving}
                 >
                   {saving ? (
-                    <LoaderCircle
-                      className="spin"
-                      size={18}
-                    />
+                    <LoaderCircle className="spin" size={18} />
                   ) : (
                     <>
                       <CheckCircle2 size={18} />
@@ -2140,9 +2135,7 @@ export default function App() {
               <button
                 type="button"
                 className="close-button"
-                onClick={() =>
-                  setDeletingTransaction(null)
-                }
+                onClick={() => setDeletingTransaction(null)}
                 disabled={saving}
                 aria-label="Close"
               >
@@ -2150,17 +2143,13 @@ export default function App() {
               </button>
             </div>
 
-            {formError && (
-              <Notice>{formError}</Notice>
-            )}
+            {formError && <Notice>{formError}</Notice>}
 
             <div className="modal-actions">
               <button
                 type="button"
                 className="secondary-button"
-                onClick={() =>
-                  setDeletingTransaction(null)
-                }
+                onClick={() => setDeletingTransaction(null)}
                 disabled={saving}
               >
                 Cancel
@@ -2173,14 +2162,185 @@ export default function App() {
                 disabled={saving}
               >
                 {saving ? (
-                  <LoaderCircle
-                    className="spin"
-                    size={18}
-                  />
+                  <LoaderCircle className="spin" size={18} />
                 ) : (
                   <>
                     <Trash2 size={17} />
                     Delete transaction
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE ACCOUNT CONFIRMATION */}
+
+      {deletingAccount && (
+        <div className="modal-backdrop">
+          <div
+            className="modal-card"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-account-title"
+            aria-describedby="delete-account-description"
+          >
+            <div className="modal-header">
+              <div>
+                <div className="eyebrow">
+                  ACCOUNT MANAGEMENT
+                </div>
+
+                <h2 id="delete-account-title">
+                  Delete {deletingAccount.name}?
+                </h2>
+
+                <p id="delete-account-description">
+                  This will permanently remove this account
+                  from your dashboard and Supabase.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="close-button"
+                onClick={() => setDeletingAccount(null)}
+                disabled={saving}
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div
+              style={{
+                padding: 18,
+                borderRadius: 12,
+                border: "1px solid #333b48",
+                background: "#11161e",
+                marginBottom: 20,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  marginBottom: 12,
+                }}
+              >
+                <Wallet size={20} color="#9ca8b8" />
+                <strong>{deletingAccount.name}</strong>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  color: "#98a4b3",
+                  fontSize: 12,
+                }}
+              >
+                <span>
+                  {deletingAccount.type === "credit"
+                    ? "Outstanding debt"
+                    : "Current balance"}
+                </span>
+
+                <strong style={{ color: "#f1f5f9" }}>
+                  {money(deletingAccount.balance)}
+                </strong>
+              </div>
+            </div>
+
+            {accountDeleteChecking ? (
+              <div
+                className="ultra-loading"
+                style={{ minHeight: 70 }}
+              >
+                <LoaderCircle
+                  className="spin"
+                  size={20}
+                />
+                Checking transaction history...
+              </div>
+            ) : accountTransactionCount > 0 ? (
+              <Notice>
+                This account is linked to{" "}
+                {accountTransactionCount} transaction
+                {accountTransactionCount === 1 ? "" : "s"}.
+                Delete or move those transactions before
+                deleting this account. Transfers and card
+                payments involving another account must
+                also be handled.
+              </Notice>
+            ) : accountTransactionCount === 0 ? (
+              <Notice type="success">
+                No transactions are linked to this account.
+                It can be deleted.
+              </Notice>
+            ) : null}
+
+            {accountDeleteError && (
+              <Notice>{accountDeleteError}</Notice>
+            )}
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setDeletingAccount(null)}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmDeleteAccount}
+                disabled={
+                  saving ||
+                  accountDeleteChecking ||
+                  accountTransactionCount !== 0 ||
+                  Boolean(accountDeleteError)
+                }
+                style={{
+                  display: "inline-flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: 9,
+                  minHeight: 46,
+                  padding: "12px 20px",
+                  border: "1px solid #9b3d49",
+                  borderRadius: 10,
+                  background:
+                    accountTransactionCount === 0
+                      ? "#a93e4c"
+                      : "#39272d",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor:
+                    accountTransactionCount === 0
+                      ? "pointer"
+                      : "not-allowed",
+                  opacity:
+                    saving || accountTransactionCount !== 0
+                      ? 0.6
+                      : 1,
+                }}
+              >
+                {saving ? (
+                  <LoaderCircle
+                    className="spin"
+                    size={17}
+                  />
+                ) : (
+                  <>
+                    <Trash2 size={17} />
+                    Permanently delete
                   </>
                 )}
               </button>
