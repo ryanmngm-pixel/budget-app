@@ -1,0 +1,385 @@
+
+.ultra-page {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.ultra-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 25px;
+  padding: 35px;
+  border: 1px solid #34473f;
+  border-radius: 19px;
+  background: linear-gradient(
+    125deg,
+    #172c26 0%,
+    #15201f 60%,
+    #141a1c 100%
+  );
+}
+
+.ultra-hero-content {
+  flex: 1;
+  max-width: 620px;
+}
+
+.ultra-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #85d9b2;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  margin-bottom: 17px;
+}
+
+.ultra-hero h2 {
+  font-family: "DM Sans", sans-serif;
+  font-size: clamp(23px, 3vw, 31px);
+  letter-spacing: -1px;
+  margin-bottom: 12px;
+}
+
+.ultra-hero p {
+  color: #a1b6ab;
+  font-size: 12px;
+  line-height: 1.9;
+  max-width: 480px;
+  margin-bottom: 28px;
+}
+
+.ultra-hero-symbol {
+  width: 125px;
+  height: 125px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: #80c7a3;
+  border-radius: 30px;
+  background: rgba(104, 177, 139, 0.08);
+  border: 1px solid rgba(104, 177, 139, 0.13);
+}
+
+.ultra-allocation {
+  display: flex;
+  gap: 3px;
+  height: 9px;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.ultra-allocation-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  color: #c3d0c8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ultra-settings,
+.ultra-detail-card {
+  padding: 25px;
+  background: #151920;
+  border: 1px solid #2b323c;
+  border-radius: 16px;
+}
+
+.ultra-settings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 25px;
+}
+
+.ultra-settings h3,
+.ultra-detail-card h3 {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.ultra-settings p {
+  color: #8993a2;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.ultra-income-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.ultra-income-input {
+  height: 44px;
+  width: 190px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  background: #0d1117;
+  border: 1px solid #363e4a;
+  border-radius: 10px;
+  color: #8e9baa;
+}
+
+.ultra-income-input input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #f5f6f8;
+  font-size: 14px;
+}
+
+.ultra-month-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+}
+
+.ultra-month-header h2 {
+  font-size: 21px;
+  letter-spacing: -0.5px;
+  margin-bottom: 7px;
+}
+
+.ultra-month-header p {
+  font-size: 12px;
+  color: #8993a2;
+  margin: 0;
+}
+
+.ultra-month-switcher {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px;
+  border: 1px solid #303845;
+  border-radius: 11px;
+  background: #171c24;
+}
+
+.ultra-month-switcher button {
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: #252c37;
+  color: #e1e8f2;
+}
+
+.ultra-month-switcher strong {
+  min-width: 105px;
+  text-align: center;
+  font-size: 11px;
+}
+
+.ultra-progress-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.ultra-progress-card {
+  min-width: 0;
+  padding: 23px;
+  background: #151920;
+  border: 1px solid #2c333e;
+  border-radius: 16px;
+}
+
+.ultra-progress-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.ultra-progress-icon {
+  width: 39px;
+  height: 39px;
+  display: grid;
+  place-items: center;
+  background: #242b35;
+  border-radius: 11px;
+}
+
+.ultra-progress-percentage {
+  color: #b9c4d1;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ultra-progress-card h3 {
+  font-size: 17px;
+  margin-bottom: 7px;
+}
+
+.ultra-progress-card p {
+  font-size: 11px;
+  color: #8e98a6;
+  margin-bottom: 22px;
+}
+
+.ultra-progress-amount {
+  font-family: "DM Sans", sans-serif;
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  overflow-wrap: anywhere;
+}
+
+.ultra-progress-amount span {
+  color: #7d8796;
+  font-family: "Inter", sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ultra-progress-track {
+  height: 7px;
+  background: #303844;
+  border-radius: 99px;
+  margin: 18px 0 15px;
+  overflow: hidden;
+}
+
+.ultra-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.3s ease;
+}
+
+.ultra-progress-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #929baa;
+}
+
+.ultra-progress-footer strong {
+  color: #e1e7f0;
+  font-size: 12px;
+}
+
+.ultra-bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.ultra-detail-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+  color: #a9c7b8;
+}
+
+.ultra-detail-heading h3 {
+  color: #f0f3f7;
+  margin: 0;
+}
+
+.ultra-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid #2b323d;
+  color: #909ba9;
+  font-size: 12px;
+}
+
+.ultra-detail-row strong {
+  color: #e7edf5;
+  text-align: right;
+}
+
+.ultra-detail-row.emphasized {
+  border-bottom: none;
+  color: #dce7f4;
+  font-weight: 700;
+}
+
+.ultra-savings-number {
+  font-family: "DM Sans", sans-serif;
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -1.3px;
+  color: #8bd9b3;
+}
+
+.ultra-savings-description {
+  color: #8e9bab;
+  font-size: 12px;
+  margin: 7px 0 20px;
+}
+
+.ultra-disclaimer {
+  margin: 20px 0 0;
+  color: #778594;
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.ultra-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 250px;
+  color: #9ca8b8;
+  font-size: 13px;
+}
+
+@media (max-width: 1100px) {
+  .ultra-progress-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .ultra-hero {
+    padding: 25px;
+  }
+
+  .ultra-hero-symbol {
+    display: none;
+  }
+
+  .ultra-settings,
+  .ultra-month-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ultra-income-form {
+    width: 100%;
+  }
+
+  .ultra-income-input {
+    flex: 1;
+  }
+
+  .ultra-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ultra-allocation-labels {
+    font-size: 10px;
+  }
+}
